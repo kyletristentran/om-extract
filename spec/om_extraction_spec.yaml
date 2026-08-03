@@ -1,0 +1,357 @@
+# om_extraction_spec.yaml — all pattern knowledge lives here, not in code.
+#
+# Core principle: adding or adjusting a field is a YAML edit, never a code edit.
+# The `llm.fields` block below drives BOTH the model prompt and the JSON schema that
+# validates the model's output, so the two can never drift apart.
+#
+# Both triage.py and deterministic.py yaml.safe_load this file at IMPORT time and
+# index their own top-level key. A typo here fails before any PDF is opened.
+
+# ---------------------------------------------------------------------------
+# triage — classify a PDF as text_layer / scanned / hybrid. The pipeline branches
+# on this verdict, so it runs before anything expensive.
+# ---------------------------------------------------------------------------
+triage:
+  # chars of extractable text per page below which a page counts as "image-only"
+  min_chars_text_page: 40
+  # doc classification thresholds (fraction of pages with a text layer)
+  text_layer_doc_threshold: 0.9    # >= 90% text pages -> text_layer
+  scanned_doc_threshold: 0.1       # <= 10% text pages -> scanned; else hybrid
+
+# ---------------------------------------------------------------------------
+# deterministic — the zero-LLM pass. Everything reliably regex-able.
+# A regex on a literal label is 100% reliable where a 14B model is ~95%. Use the
+# model only where layout and wording genuinely drift (that is the rent roll).
+# ---------------------------------------------------------------------------
+deterministic:
+  # Assessor's Parcel Number / Tax Parcel ID. Formats vary widely by county:
+  #   0341207700        (10-digit, undelimited)
+  #   123-456-789       (dashed)
+  #   12-34-567-890-1234 (long dashed, multi-segment)
+  # Deduped across pages. A property spanning MORE THAN ONE parcel is real and
+  # common — so >1 distinct value is not an error, but it does mean no single
+  # value can be called "the" parcel. The pass flags it and refuses to pick.
+  parcel_id:
+    pattern: '(?:tax\s+)?parcel\s+(?:id\s+)?(?:number|num|no\.?|#)?\s*[:\s]\s*([0-9][0-9\-\.]{5,24}[0-9])'
+    dedupe: true
+    multi_ok: true          # >1 distinct -> flag, do not pick
+
+  # Version signals, checked against BOTH filename and body. Order = precedence.
+  # Filename wins outright over body: a body sentence "a draft of this memorandum"
+  # must not outrank a filename that says "Final".
+  #
+  # NOTE "Confidential" is deliberately absent. Almost every OM is captioned
+  # "Confidential Offering Memorandum" — it is a handling classification, not a
+  # revision state, and treating it as a version would label the whole corpus.
+  version_signals:
+    - label: "Final"
+      pattern: '\bfinal\b'
+    - label: "Revised"
+      pattern: '\brevised\b'
+    - label: "Updated"
+      pattern: '\bupdated\b'
+    - label: "Draft"
+      pattern: '\bdraft\b'
+    - label: "Preliminary"
+      pattern: '\bprelim(?:inary)?\b'
+
+  # Document date from the filename. Each entry declares its own capture ORDER,
+  # so parsing keys on that and never on the entry's position in this list —
+  # inserting a pattern mid-list is safe. Two-digit years pivot into 20xx.
+  # `month_year` yields a YYYY-MM document id (no day precision in the source;
+  # inventing one would be a fabricated fact).
+  document_date:
+    filename_patterns:
+      - pattern: '(\d{4})-(\d{2})-(\d{2})'                    # 2019-09-30
+        order: ymd
+      - pattern: '(\d{1,2})[._-](\d{1,2})[._-](\d{4})'        # 9.30.2019
+        order: mdy
+      - pattern: '(\d{1,2})[._-](\d{1,2})[._-](\d{2})(?!\d)'  # 9.30.19
+        order: mdy
+      - pattern: '(?i)\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(\d{4})\b'
+        order: month_year                                      # "Sept 2019"
+    document_id_format: "OM-{iso_date}"
+
+  # Labelled key-value facts from the Property Details / Site Description block.
+  # Each is a plain single-capture regex; add a row here to add a field.
+  #
+  # These run against the COLLAPSED text, not the layout text — pdfplumber's
+  # default extractor squeezes runs of spaces to one, so a pattern that requires
+  # two or more spaces between label and value will never fire. (Column alignment
+  # is only needed for the table, which reads the layout text instead.)
+  labeled_fields:
+    - name: property_name
+      pattern: '(?im)^\s*(?:property|building|asset)\s+name\s*:?\s+(.+?)\s*$'
+    - name: property_address
+      pattern: '(?im)^\s*(?:property\s+|site\s+|street\s+)?address\s*:?\s+(.+?)\s*$'
+    - name: county
+      pattern: '(?im)^\s*county\s*:?\s+([A-Za-z][A-Za-z .\-]+?)\s*$'
+    - name: year_built
+      pattern: '(?i)year\s+(?:built|delivered)(?:\s*/\s*renovated)?\s*:?\s+([0-9][0-9/\-]*)'
+    - name: total_rentable_sf
+      pattern: '(?i)(?:total\s+)?rentable\s+square\s+f(?:oo|ee)t(?:age)?\s*:?\s+([0-9][0-9,]*)'
+    - name: floors
+      pattern: '(?im)^\s*(?:floors|stories)\s*:?\s+(\d{1,3})\s*$'
+
+  # Broker / listing-contact names. Evidence only — this establishes that the
+  # document carries a real listing contact block, which is what the confidence
+  # rubric scores. It is not an attempt to build a contact database.
+  #
+  # The inter-word separators are [ \t] and NOT \s, deliberately. \s matches a
+  # newline, so a capture that runs off the end of its line keeps going into the
+  # next one and returns things like "Dev Ramaswamy\nPROPERTY OVERVIEW". These
+  # patterns also have no left anchor, so a sentence containing "...countersigned
+  # by Accounting Services..." will invent a contact. Both are the cost of
+  # matching an unstructured block; the field is evidence, not authority.
+  contact_block:
+    patterns:
+      - '(?:presented|listed|offered|marketed)[ \t]+by[:  \t]+([A-Z][a-zA-Z.\-]+(?:[ \t]+[A-Z][a-zA-Z.\-]+){1,3})'
+      - 'for[ \t]+more[ \t]+information[,  \t]+(?:please[ \t]+)?contact[:  \t]+([A-Z][a-zA-Z.\-]+(?:[ \t]+[A-Z][a-zA-Z.\-]+){1,3})'
+
+# ---------------------------------------------------------------------------
+# llm — the ONLY generative step: rent roll table -> tenants[] JSON.
+# Everything tunable lives here. Tuning = edit this block, never llm_pass.py.
+# ---------------------------------------------------------------------------
+llm:
+  endpoint: "http://localhost:11434/api/chat"
+  model: "qwen3:14b"
+  timeout_s: 300
+
+  # Reasoning OFF. With format=json the JSON grammar constrains the sampler while a
+  # thinking model still wants to emit reasoning tokens. On qwen3:14b that conflict
+  # reproducibly appended a stray " /" to the last value of the LAST row, at
+  # temperature 0 — a deterministic, position-specific corruption that cost 28
+  # accuracy points and looked exactly like a prompt problem.
+  # Delete this key to restore the model's default. Do not delete it casually.
+  think: false
+
+  options:
+    temperature: 0        # deterministic parse, not creative writing
+    num_ctx: 8192
+
+  region:
+    # Slice ONLY the rent roll block out of the page text. The model never sees
+    # the rest of the OM — smaller window, fewer places to hallucinate. A 40-page
+    # OM is ~90% marketing prose and photography; none of it belongs in context.
+    #
+    # The heading in a designed OM is often letter-spaced across the page
+    # ("CORE      RENT      ROLL"), so \s+ between words is required, not optional.
+    start_pattern: '(?:core\s+)?rent\s+roll|tenant\s+summary|lease\s+abstract'
+    header_pattern: '\btenant\b.*\brsf\b|\btenant\b.*\bsf\b'
+
+    # A data row must carry a square-footage figure with a thousands separator.
+    # Deliberately PERMISSIVE: it also matches subtotal and non-tenant rows.
+    # Slicing is permissive; the prompt and the validator are what discriminate.
+    # A row_pattern narrow enough to exclude subtotals would also drop any real
+    # tenant whose row is missing a column.
+    row_pattern: '\b\d{1,3},\d{3}\b'
+
+    max_lines: 80                 # hard stop; longer tables -> review
+    # >1 on purpose. A tenant name too long for its column wraps onto a line with
+    # no figures at all, and designed OMs interleave graphic chrome between table
+    # rows. At a threshold of 1 either one ends the table and every row below it
+    # is silently dropped.
+    stop_after_non_row_lines: 3
+    # A long rent roll continues on the next page under a repeated heading. Slice
+    # every block under the heading and concatenate; blocks with no data row are
+    # dropped. Tables under a DIFFERENT heading are still never seen — which is
+    # what keeps a "Historical Rent Roll" comparison table out of the results.
+    multi_region: true
+    # Read the region from layout-preserving text so column gaps survive. Without
+    # it, a row with an empty lease-expiration cell collapses and its remaining
+    # figures become unattributable — the model has to guess which column each
+    # number belongs to.
+    layout_text: true
+
+  # The tenants[] contract. Values are captured AS PRINTED; type conversion
+  # happens once, at the emit boundary. Adding a field here changes the prompt
+  # AND the validation schema, with no code edit.
+  fields:
+    - name: tenant_name
+      type: string
+      required: true
+      description: "Tenant name exactly as printed, including commas and suffixes (e.g. 'Whitlock and Pryce, LLP')"
+    - name: suite
+      type: string
+      required: false
+      pattern: '^[A-Za-z0-9\-\.,/ ]{1,40}$'
+      description: "Suite or unit designation if the table has that column, else null"
+    - name: rentable_sf
+      type: sf
+      required: true
+      description: "Rentable square feet for this tenant, digits and commas only"
+    - name: pct_of_building
+      type: percent
+      required: false
+      description: "Percent of building column if present, e.g. '11.1%', else null"
+    - name: lease_expiration
+      type: term
+      required: false
+      description: "Lease expiration exactly as printed, e.g. 'Dec-26' or '12/31/2026', else null"
+    - name: in_place_base_rent
+      type: money
+      required: false
+      description: "In-place base rent per SF, digits and decimal only, no $ sign"
+    - name: market_rent
+      type: money
+      required: false
+      description: "Market or asking rent per SF if the table has that column, no $ sign"
+
+  # Value shapes the model's output must satisfy, by field type.
+  money_pattern: '^[0-9][0-9,]*(\.[0-9]{1,2})?$'
+  sf_pattern: '^[0-9][0-9,]*$'
+  percent_pattern: '^-?[0-9]+(\.[0-9]{1,2})?%$'
+  term_pattern: '^(?:[A-Za-z]{3}-[0-9]{2}|[0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4}|[0-9]{4}-[0-9]{2}-[0-9]{2}|MTM|M-T-M)$'
+
+  system_prompt: |
+    You extract tenant rows from a rent roll table in a commercial real estate
+    Offering Memorandum. You are a parser, not an analyst.
+
+    Return ONLY a JSON object of the form:
+      {"tenants": [ {<one object per tenant row>}, ... ]}
+
+    Rules:
+    - One object per TENANT row. Never emit a header row.
+    - Copy values exactly as printed. Do not compute, round, reformat, annualize,
+      or correct them. A name printed truncated stays truncated.
+    - Strip only a leading "$" from rent values. Keep the commas in square footage.
+    - NEVER emit a total, subtotal, or summary row as a tenant. These look like
+      data rows and often carry a full set of figures. Skip any row whose label is
+      or begins with: Total, Subtotal, Total Leased, Total Office Leased, Total
+      Rentable Square Feet, Available, Vacant, Vacancy, BOMA Adjustment, Weighted
+      Average, or an aggregate bucket such as "Tenants < 15K RSF".
+    - NEVER emit a non-tenant space category as a tenant. Skip rows labelled
+      Storage, Leased Storage, Amenities, Retail, Antenna, Rooftop, Parking,
+      Building Use, Management Office, or Conference Center — these are space
+      classifications, not tenants.
+    - Column boundaries are not marked. Use the square-footage figure as the
+      anchor: the tenant name is everything to its left, and the term and rent
+      columns follow to its right.
+    - Column alignment is NOT reliable. In the same table, a short tenant name
+      leaves its row neatly aligned while a long tenant name pushes the figures
+      out of alignment and collapses the gaps. Read by column ORDER relative to
+      the square-footage anchor, not by horizontal position.
+    - A tenant name may contain commas, periods, ampersands and slashes
+      ("Hale, Barrow, Nunez & Pike", "Delacroix/Verity Media Group LLC"). Do not
+      split a name on a comma. The name ends where the square-footage figure begins.
+    - A tenant name too long for its column may continue on the next line, which
+      carries no figures at all. That continuation belongs to the row above it —
+      join them into one name, and do not emit it as its own row.
+    - The header may be split across two or three physical lines, with a group
+      label ("IN-PLACE", "MARKET") printed above the column it spans. Use the
+      combined header to identify columns.
+    - The table may carry extra columns beyond the ones listed: percent of market,
+      escalation, security deposit, TI allowance, rent per month, options. Read
+      only the listed fields and leave the rest where they are.
+    - A wide gap means an EMPTY cell in that column, not a missing column. If a
+      value is genuinely absent, use null.
+    - NEVER invent, guess, or carry a value over from another row.
+    - Emit no fields other than the ones listed. No commentary, no markdown, no
+      code fences — the JSON object only.
+
+# ---------------------------------------------------------------------------
+# ocr — backends are tried in this order and imported lazily, because the
+# primary one pulls a large model stack that most runs do not need.
+# ---------------------------------------------------------------------------
+ocr:
+  # docling emits Markdown WITH table geometry, which the region slicer needs to
+  # find row boundaries at all. paddleocr is line-level only — a real downgrade,
+  # not an equal alternative.
+  backends: ["docling", "paddleocr"]
+  # triage verdicts that route down the OCR branch. text_layer docs are skipped
+  # because re-OCRing extractable text only adds transcription error.
+  classifications: ["scanned", "hybrid"]
+  dpi: 300          # paddleocr rasterization only
+  lang: "en"
+
+# ---------------------------------------------------------------------------
+# validation — the last gate before a record is allowed to represent a real
+# document. Validation REJECTS; it never rewrites a value to make it pass.
+# ---------------------------------------------------------------------------
+validation:
+  # Weakest -> strongest. A record's confidence is decided by the WEAKEST source
+  # that contributed to it: a reviewer's trust is capped by the worst evidence in
+  # front of them, not raised by the best.
+  source_rank: ["ocr", "mock", "llm", "body_regex", "filename"]
+  confidence_by_source:
+    ocr: "low"          # OCR transcription + model parse — two error surfaces
+    mock: "low"         # test double, never real evidence
+    llm: "medium"       # model parse that passed schema validation
+    body_regex: "high"  # literal pattern match against the document text
+    filename: "high"
+
+  # Deterministic flags that must stop a record.
+  blocking_flags: ["multiple_parcel_ids"]
+
+  document_checks:
+    - field: document_id
+      pattern: '^OM-\d{4}-\d{2}(-\d{2})?$'
+      required: true
+      blocking: true
+    - field: document_date
+      pattern: '^\d{4}-\d{2}(-\d{2})?$'
+      required: true
+      blocking: true
+    - field: document_version
+      # No pattern on purpose: the value can only come from version_signals above,
+      # so an enum here would be a second copy of that list, free to drift from it.
+      required: false
+      blocking: true
+    - field: parcel_id
+      pattern: '^[0-9][0-9\-\.]{5,24}[0-9]$'
+      required: false     # plenty of OMs never print a parcel number —
+      blocking: true      # absent is fine, malformed is not.
+
+  row_checks:
+    - field: tenant_name
+      pattern: '^.{2,120}$'
+      required: true
+      blocking: true
+    - field: rentable_sf
+      pattern: '^[0-9][0-9,]*$'
+      required: true
+      blocking: true
+    - field: suite
+      pattern: '^[A-Za-z0-9\-\.,/ ]{1,40}$'
+      required: false
+      blocking: true
+    - field: pct_of_building
+      pattern: '^-?[0-9]+(\.[0-9]{1,2})?%$'
+      required: false
+      blocking: true
+    - field: lease_expiration
+      pattern: '^(?:[A-Za-z]{3}-[0-9]{2}|[0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4}|[0-9]{4}-[0-9]{2}-[0-9]{2}|MTM|M-T-M)$'
+      # A blank expiration is a real state (month-to-month, or a column the table
+      # simply does not have). Null passes; a malformed value does not.
+      required: false
+      blocking: true
+    - field: in_place_base_rent
+      pattern: '^[0-9][0-9,]*(\.[0-9]{1,2})?$'
+      required: false
+      blocking: true
+    - field: market_rent
+      pattern: '^[0-9][0-9,]*(\.[0-9]{1,2})?$'
+      required: false
+      blocking: true
+
+  # A row whose tenant_name matches any of these is not a tenant — it is a
+  # subtotal, a summary line, or a space category. The prompt already tells the
+  # model to skip them; this is the check that catches it when the model does not.
+  #
+  # This REJECTS the record rather than dropping the row. Silently deleting a bad
+  # row would hide a real parsing failure, and the failure mode this guards
+  # against is severe: "TOTAL OFFICE LEASED" carries a full set of figures and,
+  # emitted as a tenant, becomes a 439,489 SF phantom lease in whatever consumes
+  # this output.
+  non_tenant_row_patterns:
+    - '^\s*(?:sub)?total\b'
+    - '^\s*grand\s+total\b'
+    - '^\s*available\b'
+    - '^\s*vacan(?:t|cy)\b'
+    - '^\s*occupied\b'
+    - '^\s*boma\b'
+    - '^\s*tenants?\s*[<>]'
+    - '^\s*(?:leased\s+)?storage\b'
+    - '^\s*(?:amenities|retail|antenna|rooftop|parking|building\s+use|management\s+office|conference\s+center)\b'
+    - 'weighted\s+average'
+    - '^\s*(?:all\s+)?other\s+tenants\b'

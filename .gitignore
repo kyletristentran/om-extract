@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+out/
+
+# Generated. Rebuild with: python fixtures/generate_fixtures.py
+fixtures/pdfs/
+fixtures/ground_truth.json
+
+# Never commit real documents. Offering Memorandums are confidential brokerage
+# material and are not yours to redistribute — including "low res" marketing
+# copies. Put your own test files somewhere ignored and keep them there.
+private/
+samples/private/
+*.om.pdf

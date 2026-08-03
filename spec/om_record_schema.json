@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "om_record_schema.json",
+  "title": "Offering Memorandum extraction record",
+  "description": "The output contract. One object per source document, with a nested tenants[] array at the lease grain. Values here are TYPED (numbers are numbers, dates are ISO); the extraction passes upstream deliberately keep source formatting so a value can be compared to the printed page, and conversion happens once at the emit boundary.",
+
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "document_id", "document_date", "tenant_count", "tenants",
+    "extraction_confidence", "source_file"
+  ],
+
+  "properties": {
+    "document_id": {
+      "type": "string",
+      "pattern": "^OM-\\d{4}-\\d{2}(-\\d{2})?$",
+      "description": "Primary key. OM-YYYY-MM-DD when the source carries a day, OM-YYYY-MM when it only carries a month. Never padded to a fake day."
+    },
+    "document_date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}(-\\d{2})?$",
+      "description": "ISO date or year-month. Never an Excel serial."
+    },
+    "document_version": {
+      "type": ["string", "null"],
+      "enum": ["Final", "Revised", "Updated", "Draft", "Preliminary", null],
+      "description": "Revision state. Precedence Final > Revised > Updated > Draft > Preliminary. Null is the common case — most OMs carry no revision marker at all. 'Confidential' is a handling classification, not a version, and never appears here."
+    },
+
+    "property_name": { "type": ["string", "null"] },
+    "property_address": { "type": ["string", "null"] },
+    "county": { "type": ["string", "null"] },
+    "year_built": { "type": ["string", "null"], "description": "Kept as a string: sources print ranges and multiple renovation years ('1986/2007/2015-2016'), and collapsing that to one integer discards information." },
+    "floors": { "type": ["integer", "null"], "minimum": 0 },
+    "total_rentable_sf": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Building RSF as stated in the document. NOT computed from tenants[] — the two legitimately differ (vacancy, non-tenant space, BOMA adjustments), and reconciling them is an analyst's job, not a parser's."
+    },
+    "parcel_id": {
+      "type": ["string", "null"],
+      "description": "Assessor's / tax parcel number as printed. Null when the document prints none, AND when it prints more than one — a property spanning multiple parcels is real, so the record fails closed rather than picking one."
+    },
+
+    "tenant_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Hard rule: MUST equal len(tenants[]). Enforced in code as well as here, because a schema cannot compare two fields."
+    },
+    "tenants": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/tenant_row" },
+      "description": "Lease grain: one row per tenant-in-a-document. A tenant occupying several suites at different terms is several rows. Never collapsed."
+    },
+
+    "contact_names": {
+      "type": ["string", "null"],
+      "description": "Semicolon-joined listing contacts found in the body. Evidence that the document carries a real listing block; not a contact database."
+    },
+
+    "extraction_confidence": {
+      "$ref": "#/$defs/confidence",
+      "description": "Confidence in the DOCUMENT EVIDENCE. High = a parcel ID or a listing contact block was found in the body; Medium = a filename version signal only; Low = inferred."
+    },
+    "row_confidence": {
+      "$ref": "#/$defs/confidence",
+      "description": "Confidence in HOW THE ROWS WERE READ: High = regex, Medium = LLM over a text layer, Low = OCR then LLM. A different axis from extraction_confidence — a scanned document with a clean printed parcel ID is High on evidence and Low on reading. Kept separate on purpose; collapsing the two loses information a reviewer needs."
+    },
+
+    "source_file": { "type": "string" },
+    "classification": { "enum": ["text_layer", "scanned", "hybrid", null] },
+    "route": { "enum": ["text", "ocr", null] },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Audit trail. Issues raised, fallbacks used, and anything a reviewer needs to see."
+    }
+  },
+
+  "$defs": {
+    "confidence": { "enum": ["High", "Medium", "Low"] },
+
+    "money": {
+      "type": ["number", "null"],
+      "description": "Plain number — no currency symbol, no thousands separators, null if absent. A blank cell in the source is null, which is a real state and not an error."
+    },
+
+    "tenant_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["document_id", "tenant_name", "rentable_sf"],
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "pattern": "^OM-\\d{4}-\\d{2}(-\\d{2})?$",
+          "description": "Foreign key. Hard rule: every child document_id MUST equal its parent's. Set from the parent rather than trusted from the row, so the two cannot disagree."
+        },
+        "tenant_name": {
+          "type": "string",
+          "minLength": 2,
+          "description": "As printed, including commas and entity suffixes. Never a subtotal, summary, or space-category label — those are rejected upstream."
+        },
+        "suite": { "type": ["string", "null"] },
+        "rentable_sf": { "type": "integer", "minimum": 0 },
+        "pct_of_building": {
+          "type": ["number", "null"],
+          "description": "Percent as a number: '11.1%' becomes 11.1, not 0.111."
+        },
+        "lease_expiration": {
+          "type": ["string", "null"],
+          "pattern": "^\\d{4}-\\d{2}(-\\d{2})?$",
+          "description": "ISO. YYYY-MM when the source prints only a month ('Dec-26') — the day is not in the document and is not invented. YYYY-MM-DD only when the source actually carries a day."
+        },
+        "lease_expiration_precision": {
+          "enum": ["day", "month", "month_to_month", "absent", null],
+          "description": "Which precision the source supported. 'month_to_month' records an MTM lease, which has no expiration rather than an unknown one — a distinction that matters to anyone modeling rollover."
+        },
+        "in_place_base_rent": { "$ref": "#/$defs/money" },
+        "market_rent": { "$ref": "#/$defs/money" }
+      }
+    }
+  }
+}

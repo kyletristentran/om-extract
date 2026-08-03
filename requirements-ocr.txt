@@ -1,0 +1,17 @@
+# OCR backend. Large (~3 GB with its model stack) and only needed for scanned
+# documents. Install into the SAME venv:
+#
+#   .venv/bin/pip install -r requirements-ocr.txt
+#
+# Without this, ocr_pass.py imports fail lazily and scanned documents route to
+# out/review_queue.json with `ocr_backend_unavailable`. That is a supported
+# configuration, not a broken one.
+#
+# Run triage.py over a sample of your own documents first. If none come back
+# `scanned`, you do not need this.
+
+docling>=2.0
+
+# Optional second backend — line-level text only, materially weaker on tables.
+# paddleocr>=2.7
+# pdf2image>=1.17
