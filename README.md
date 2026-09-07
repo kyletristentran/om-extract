@@ -1,5 +1,7 @@
 # om-extract
 
+[![CI](https://github.com/kyletristentran/om-extract/actions/workflows/ci.yml/badge.svg)](https://github.com/kyletristentran/om-extract/actions/workflows/ci.yml)
+
 Extract structured rent roll data from commercial real estate Offering Memorandums.
 Runs entirely on your own machine — no API keys, no uploads, no per-page cost.
 
