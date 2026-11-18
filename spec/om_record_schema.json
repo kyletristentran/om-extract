@@ -25,7 +25,7 @@
     "document_version": {
       "type": ["string", "null"],
       "enum": ["Final", "Revised", "Updated", "Draft", "Preliminary", null],
-      "description": "Revision state. Precedence Final > Revised > Updated > Draft > Preliminary. Null is the common case — most OMs carry no revision marker at all. 'Confidential' is a handling classification, not a version, and never appears here."
+      "description": "Revision state. Precedence Final > Revised > Updated > Draft > Preliminary. Null is the common case. Most OMs carry no revision marker at all. 'Confidential' is a handling classification, not a version, and never appears here."
     },
 
     "property_name": { "type": ["string", "null"] },
@@ -36,11 +36,11 @@
     "total_rentable_sf": {
       "type": ["integer", "null"],
       "minimum": 0,
-      "description": "Building RSF as stated in the document. NOT computed from tenants[] — the two legitimately differ (vacancy, non-tenant space, BOMA adjustments), and reconciling them is an analyst's job, not a parser's."
+      "description": "Building RSF as stated in the document. NOT computed from tenants[]. The two legitimately differ (vacancy, non-tenant space, BOMA adjustments), and reconciling them is an analyst's job, not a parser's."
     },
     "parcel_id": {
       "type": ["string", "null"],
-      "description": "Assessor's / tax parcel number as printed. Null when the document prints none, AND when it prints more than one — a property spanning multiple parcels is real, so the record fails closed rather than picking one."
+      "description": "Assessor's / tax parcel number as printed. Null when the document prints none, AND when it prints more than one. A property spanning multiple parcels is real, so the record fails closed rather than picking one."
     },
 
     "tenant_count": {
@@ -65,7 +65,7 @@
     },
     "row_confidence": {
       "$ref": "#/$defs/confidence",
-      "description": "Confidence in HOW THE ROWS WERE READ: High = regex, Medium = LLM over a text layer, Low = OCR then LLM. A different axis from extraction_confidence — a scanned document with a clean printed parcel ID is High on evidence and Low on reading. Kept separate on purpose; collapsing the two loses information a reviewer needs."
+      "description": "Confidence in HOW THE ROWS WERE READ: High = regex, Medium = LLM over a text layer, Low = OCR then LLM. A different axis from extraction_confidence. A scanned document with a clean printed parcel ID is High on evidence and Low on reading. Kept separate on purpose; collapsing the two loses information a reviewer needs."
     },
 
     "source_file": { "type": "string" },
@@ -82,7 +82,7 @@
 
     "money": {
       "type": ["number", "null"],
-      "description": "Plain number — no currency symbol, no thousands separators, null if absent. A blank cell in the source is null, which is a real state and not an error."
+      "description": "Plain number: no currency symbol, no thousands separators, null if absent. A blank cell in the source is null, which is a real state and not an error."
     },
 
     "tenant_row": {
@@ -98,7 +98,7 @@
         "tenant_name": {
           "type": "string",
           "minLength": 2,
-          "description": "As printed, including commas and entity suffixes. Never a subtotal, summary, or space-category label — those are rejected upstream."
+          "description": "As printed, including commas and entity suffixes. Never a subtotal, summary, or space-category label; those are rejected upstream."
         },
         "suite": { "type": ["string", "null"] },
         "rentable_sf": { "type": "integer", "minimum": 0 },
@@ -109,11 +109,11 @@
         "lease_expiration": {
           "type": ["string", "null"],
           "pattern": "^\\d{4}-\\d{2}(-\\d{2})?$",
-          "description": "ISO. YYYY-MM when the source prints only a month ('Dec-26') — the day is not in the document and is not invented. YYYY-MM-DD only when the source actually carries a day."
+          "description": "ISO. YYYY-MM when the source prints only a month ('Dec-26'). The day is not in the document and is not invented. YYYY-MM-DD only when the source actually carries a day."
         },
         "lease_expiration_precision": {
           "enum": ["day", "month", "month_to_month", "absent", null],
-          "description": "Which precision the source supported. 'month_to_month' records an MTM lease, which has no expiration rather than an unknown one — a distinction that matters to anyone modeling rollover."
+          "description": "Which precision the source supported. 'month_to_month' records an MTM lease, which has no expiration rather than an unknown one. A distinction that matters to anyone modeling rollover."
         },
         "in_place_base_rent": { "$ref": "#/$defs/money" },
         "market_rent": { "$ref": "#/$defs/money" }

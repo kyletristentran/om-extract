@@ -1,8 +1,8 @@
-"""ocr_pass.py — recover the rent roll from scanned pages.
+"""ocr_pass.py: recover the rent roll from scanned pages.
 
 Two-stage by design: OCR to structured Markdown FIRST, then hand that Markdown to
 the same LLM pass the text-layer branch uses. A one-shot vision model ("look at
-this page, give me JSON") is worse on dense financial tables — it has to do layout
+this page, give me JSON") is worse on dense financial tables. It has to do layout
 analysis and value extraction in a single forward pass, and when it drifts you
 cannot tell which half failed. Splitting the stages means an OCR error and a
 parsing error are distinguishable in the review queue, which is the difference
@@ -14,13 +14,13 @@ so the confidence rubric in validate.py can rank it below regex and plain LLM.
 
 Backends are tried in spec order and imported lazily, because the primary one
 pulls a large model stack that most runs do not need:
-  - docling  — primary; structured Markdown that preserves table geometry
-  - paddleocr — fallback; plain text, materially weaker on table structure
+  - docling:   primary; structured Markdown that preserves table geometry
+  - paddleocr: fallback; plain text, materially weaker on table structure
 
 If no backend is installed the pass fails closed with `ocr_backend_unavailable`.
 It never falls back to guessing, and never to the text layer it already knows is
 absent. Running without OCR installed is a supported configuration, not a broken
-one — scanned documents simply route to review.
+one; scanned documents route to review.
 
 Usage:
     python src/ocr_pass.py <file-or-dir> [...]
@@ -44,11 +44,11 @@ SPEC = yaml.safe_load((ROOT / "spec" / "om_extraction_spec.yaml").read_text())["
 
 
 # --------------------------------------------------------------------------
-# backends — each returns text, or raises
+# backends: each returns text, or raises
 # --------------------------------------------------------------------------
 def _ocr_docling(path: Path) -> str:
     """Docling's converter. Markdown keeps table structure, which is what the
-    region slicer needs to find row boundaries at all — a flat stream of OCR'd
+    region slicer needs to find row boundaries at all. A flat stream of OCR'd
     words has no row concept to slice on."""
     from docling.document_converter import DocumentConverter  # lazy: heavy import
 
@@ -57,7 +57,7 @@ def _ocr_docling(path: Path) -> str:
 
 
 def _ocr_paddle(path: Path) -> str:
-    """PaddleOCR fallback. Line-level text only — no table geometry, so the slicer
+    """PaddleOCR fallback. Line-level text only: no table geometry, so the slicer
     is working from reading order alone. Expect lower accuracy on wide tables."""
     from paddleocr import PaddleOCR  # lazy
     from pdf2image import convert_from_path  # lazy
@@ -78,7 +78,7 @@ def ocr_text(path: Path) -> tuple[str | None, str]:
     """Run the first backend that is installed and succeeds.
 
     Returns (text, backend_name) or (None, reason). An ImportError means the
-    backend is not installed — that is a setup fact, so we move to the next one.
+    backend is not installed. That is a setup fact, so we move to the next one.
     Any other exception is a real failure on this file and is recorded
     per-backend, so the review queue shows what each backend actually said rather
     than a single opaque "OCR failed".
@@ -94,7 +94,7 @@ def ocr_text(path: Path) -> tuple[str | None, str]:
         except ImportError as e:
             tried.append(f"{name}:not_installed({e.name or e})")
             continue
-        except Exception as e:                      # noqa: BLE001 — record, don't mask
+        except Exception as e:                      # noqa: BLE001 (record, don't mask)
             tried.append(f"{name}:failed({type(e).__name__}:{str(e)[:80]})")
             continue
         if text and text.strip():
@@ -109,7 +109,7 @@ def ocr_text(path: Path) -> tuple[str | None, str]:
 def process(path: Path, force: bool = False) -> dict:
     """OCR a scanned/hybrid document and parse its rent roll.
 
-    Text-layer documents are skipped (status "skipped") rather than OCR'd —
+    Text-layer documents are skipped (status "skipped") rather than OCR'd,
     re-OCRing a page that already has extractable text only adds transcription
     error to a source that was already exact. Pass force=True to override for a
     document whose text layer is present but garbage.
@@ -121,7 +121,7 @@ def process(path: Path, force: bool = False) -> dict:
     cls = verdict["classification"]
     if cls not in SPEC["classifications"] and not force:
         return {"file": path.name, "status": "skipped", "classification": cls,
-                "reason": "text_layer doc — OCR would add transcription error"}
+                "reason": "text_layer doc: OCR would add transcription error"}
 
     text, backend = ocr_text(path)
     if text is None:

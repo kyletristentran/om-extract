@@ -1,4 +1,4 @@
-"""emit.py — turn a validated pipeline record into the typed output contract.
+"""emit.py: turn a validated pipeline record into the typed output contract.
 
 This is the last mile, and it is a separate module on purpose. Everything upstream
 produces the pipeline's own shape, which is built for extraction and review: every
@@ -10,13 +10,13 @@ explicitly rather than being smeared through the passes:
 
   money    "26.06" / "$1,975" -> 26.06 / 1975. Plain numbers, null if absent.
   sf       "54,330" -> 54330
-  percent  "11.1%" -> 11.1 (NOT 0.111 — the source printed a percent, so the
+  percent  "11.1%" -> 11.1 (not 0.111; the source printed a percent, so the
            number carries percent units; rescaling silently is how a rent roll
            ends up claiming a tenant occupies 0.111% of a building)
   term     "Dec-26" -> "2026-12" with precision "month". The day is not in the
            source and is not invented.
   grain    one document object with a nested tenants[], every child carrying its
-           parent's document_id. Enforced in code — a schema cannot compare fields.
+           parent's document_id. Enforced in code: a schema cannot compare fields.
 
 Usage:
     python src/emit.py <file-or-dir> [...]
@@ -58,7 +58,7 @@ def to_number(v):
 
     Returns None for anything that does not cleanly parse. That is deliberate: a
     value the extractor could not read must not arrive downstream as 0, which
-    would silently become a real in-place rent of zero dollars — a number that
+    would silently become a real in-place rent of zero dollars, a number that
     looks like data and quietly drags every average that touches it.
     """
     if v is None:
@@ -136,7 +136,7 @@ def to_iso_term(v) -> tuple[str | None, str]:
 # evidence confidence
 # --------------------------------------------------------------------------
 def evidence_confidence(record: dict) -> str:
-    """Confidence in the DOCUMENT EVIDENCE — a different question from how
+    """Confidence in the document evidence, which is a different question from how
     cleanly the rows were read.
 
       High   a parcel ID or a listing contact block was found in the body
@@ -240,15 +240,15 @@ def check_invariants(rec: dict) -> list[str]:
 
 
 def emit(path: Path) -> tuple[dict | None, dict | None]:
-    """Returns (contract_record, error) — exactly one of the two is None."""
+    """Returns (contract_record, error). Exactly one of the two is None."""
     record = run_one(path)
 
     # A record the pipeline routed to review does not get emitted, full stop.
     #
     # This gate is not redundant with the schema below, and leaving it out was a
     # real bug: the contract schema is structural, so a rent roll containing a
-    # "TOTAL OFFICE LEASED" row passes it perfectly — correct types, correct
-    # required fields — and ships a 439,489 SF phantom lease at a plausible
+    # "TOTAL OFFICE LEASED" row passes it with correct types and correct
+    # required fields, and ships a 439,489 SF phantom lease at a plausible
     # blended rent. The pipeline had already caught it and said so. Emitting
     # anyway would mean the review queue is advisory, and a fail-closed pipeline
     # with an advisory last mile is not fail-closed.
@@ -287,7 +287,7 @@ def main(argv):
               f"{sf:>9,} SF  evidence={r['extraction_confidence']:<6} "
               f"rows={r['row_confidence']}")
     for b in bad:
-        print(f"{b['file']}: REJECTED — {'; '.join(b['errors'][:3])}")
+        print(f"{b['file']}: REJECTED: {'; '.join(b['errors'][:3])}")
 
     print(f"\n{len(ok)} contract records -> out/om_records.json"
           + (f", {len(bad)} rejected -> out/emit_errors.json" if bad else ""))

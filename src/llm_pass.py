@@ -1,4 +1,4 @@
-"""llm_pass.py — the ONLY generative step: rent roll table -> tenants[] JSON.
+"""llm_pass.py: the only generative step (rent roll table -> tenants[] JSON).
 
 Everything else in this pipeline is regex. This module exists because rent roll
 layout and column wording drift in ways regex cannot follow: tenant names are
@@ -9,13 +9,13 @@ breaks down on exactly the rows where the tenant name is longest.
 Discipline:
   - The model sees ONLY the sliced rent roll region, never the whole document.
     A 40-page OM is mostly photography and prose; none of it belongs in context.
-  - Output is validated against a jsonschema BUILT FROM THE SPEC — adding a field
+  - Output is validated against a jsonschema built from the spec, so adding a field
     to spec/om_extraction_spec.yaml changes the prompt and the schema together,
     with no code edit.
   - Fail closed. Anything unparseable, unvalidatable, or unreachable returns
     status "review" with a reason. Never a guess, never a partial row.
   - No post-hoc repair of model output. If the model returns a bad value the
-    schema rejects the record and it goes to review — that failure is the signal.
+    schema rejects the record and it goes to review. That failure is the signal.
     A silent fixup would hide the failure mode we most need to see.
 
 LLM_MOCK=1 swaps the model call for a deterministic anchored parser (source
@@ -63,7 +63,7 @@ def _review(reason, **extra):
 
 
 # --------------------------------------------------------------------------
-# region slicing — the model's entire field of view
+# region slicing: the model's entire field of view
 # --------------------------------------------------------------------------
 def _slice_one(lines: list[str], start: int, cfg: dict, row_re) -> tuple[list[str], int]:
     """Slice one rent roll block starting after `lines[start]`.
@@ -77,7 +77,7 @@ def _slice_one(lines: list[str], start: int, cfg: dict, row_re) -> tuple[list[st
     carrying no figures at all, and a designed OM interleaves graphic chrome
     (pull quotes, section labels, stat callouts) between table rows. At a
     threshold of 1, either one ends the table and every row below it is silently
-    dropped — which reads downstream as a small building rather than as a bug.
+    dropped, which reads downstream as a small building rather than as a bug.
     """
     out, rows_seen, non_row_run = [], 0, 0
     for ln in lines[start + 1: start + 1 + cfg["max_lines"]]:
@@ -103,8 +103,8 @@ def slice_region(text: str) -> list[str]:
     table under it from contributing noise.
 
     Only blocks under the configured heading are considered. A look-alike table
-    elsewhere in the document — a "Historical Rent Roll" or a comparable-property
-    summary — is never seen at all, which is a far more reliable defence than
+    elsewhere in the document, such as a "Historical Rent Roll" or a comparable-property
+    summary, is never seen at all, which is a far more reliable defence than
     asking the model to tell them apart.
     """
     cfg = SPEC["region"]
@@ -138,7 +138,7 @@ def slice_region(text: str) -> list[str]:
 
 
 # --------------------------------------------------------------------------
-# schema — built from the spec so the YAML is the single source of truth
+# schema: built from the spec so the YAML is the single source of truth
 # --------------------------------------------------------------------------
 def build_schema() -> dict:
     props, required = {}, []
@@ -194,7 +194,7 @@ def call_ollama(system: str, user: str) -> str:
     # Reasoning mode is a spec setting because it is not free: with format=json the
     # JSON grammar constrains the sampler while a thinking model still wants to
     # emit reasoning tokens. On qwen3:14b that conflict leaked a trailing " /" into
-    # the last value of the LAST row — reproducibly, at temperature 0. Omit the key
+    # the last value of the last row, reproducibly, at temperature 0. Omit the key
     # entirely to leave the model's own default alone.
     if "think" in SPEC:
         payload["think"] = SPEC["think"]
@@ -213,7 +213,7 @@ def _strip_think(raw: str) -> str:
 
 
 # --------------------------------------------------------------------------
-# mock — a test double, NOT a fallback for the real path
+# mock: a test double, not a fallback for the real path
 # --------------------------------------------------------------------------
 _MOCK_SF = re.compile(r"\b(\d{1,3},\d{3})\b")
 _MOCK_MONEY = re.compile(r"^\$?(\d[\d,]*(?:\.\d{1,2})?)$")
@@ -239,14 +239,14 @@ def mock_parse(region: list[str]) -> dict:
         if not m:
             # A tenant name too long for its column continues on the next line: no
             # figures anywhere, no label punctuation. Join it to the row above, the
-            # same thing the prompt asks the model to do. Guarded tightly — a wrap
+            # same thing the prompt asks the model to do. Guarded tightly, because a wrap
             # fragment is short, carries no digits, has no colon, and does not end
             # a sentence. Without the sentence test this happily swallowed body
             # prose into the tenant name of the row above.
             # `not ln.isupper()` rejects running headers and section titles, which
             # a designed OM sets in caps. A real wrap fragment is ordinary
             # title-case text ("Building C", "and Trust"); page chrome is
-            # "MARKET OVERVIEW". Crude, and that is the point — the double is
+            # "MARKET OVERVIEW". Crude on purpose: the double is
             # allowed to be crude, it is not allowed to be a second extractor.
             if (rows and ln and ":" not in ln and not re.search(r"\d", ln)
                     and len(ln) <= 40 and not ln.rstrip().endswith(".")
@@ -290,7 +290,7 @@ def tenants_from_text(text: str, source: str, file_name: str) -> dict:
     Both entry points go through here: the text-layer path (extract_tenants,
     source "llm") and the OCR path (ocr_pass, source "ocr"). Keeping one body
     means the two branches can never drift on slicing rules or validation
-    strictness — only on where their text came from, which is exactly the
+    strictness, only on where their text came from, which is exactly the
     difference we want recorded on the output.
     """
     mock = os.environ.get("LLM_MOCK") == "1"
@@ -299,8 +299,8 @@ def tenants_from_text(text: str, source: str, file_name: str) -> dict:
 
     region = slice_region(text)
     if not region:
-        # No text-layer table. For a scanned document this is correct and expected
-        # — the OCR branch is what recovers it. Either way: never guess.
+        # No text-layer table. For a scanned document this is correct and expected.
+        # The OCR branch is what recovers it. Either way: never guess.
         return {"file": file_name, **_review("no_rent_roll_region", source=source)}
 
     if mock:

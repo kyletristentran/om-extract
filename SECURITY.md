@@ -1,53 +1,30 @@
 # Handling real documents
 
-Everything in this repository is synthetic. Before you point it at anything real,
-two things are worth being deliberate about.
+Everything in this repository is synthetic. This note covers two points to settle before running the pipeline on real documents.
 
-## Do not commit Offering Memorandums
+## Do not commit offering memorandums
 
-An OM is confidential brokerage material. It is circulated under a confidentiality
-agreement, it usually says so on page one, and it is not yours to redistribute —
-including the "low res" marketing copies that circulate freely. `.gitignore`
-excludes `private/` and `*.om.pdf` as a speed bump, but the real defence is not
-putting them in the working tree.
+An OM is confidential brokerage material. It is circulated under a confidentiality agreement, it usually says so on page one, and the recipient has no right to redistribute it. That applies equally to the low-resolution marketing copies that circulate widely. `.gitignore` excludes `private/` and `*.om.pdf` as a precaution, but the reliable control is to keep these files out of the working tree.
 
-Keep your own test documents outside the repo, or in `private/`, and point the
-pipeline at them by path:
+Keep your own test documents outside the repository, or in `private/`, and pass the pipeline their path:
 
 ```bash
 .venv/bin/python src/pipeline.py ~/Documents/oms
 ```
 
-If you want a shareable regression corpus, extend
-`fixtures/generate_fixtures.py` instead. Encoding a trap you hit in a real
-document, as synthetic data, is the whole design of that file.
+To build a regression corpus that can be shared, extend `fixtures/generate_fixtures.py`. That file exists to encode a trap found in a real document as synthetic data.
 
-## What "local" does and does not buy you
+## What local processing covers
 
-**It buys:** no credentials, no vendor account, no per-page cost, no third party
-able to read a document you were trusted with, and no data leaving the machine at
-run time. That was the design premise, and it is why the language model is Ollama
-on `localhost` rather than a hosted API. Substituting a cloud LLM or OCR service
-"just to compare" throws away the entire property.
+Running locally means there are no credentials, no vendor account and no per-page cost. No third party can read a document you were trusted with, and no data leaves the machine at run time. This was the design premise, and it is the reason the language model is Ollama on `localhost` and not a hosted API. Substituting a cloud LLM or OCR service for comparison removes that property.
 
-**It does not buy:** freedom from your organization's software, data-handling, and
-endpoint policy. Processing confidential documents on a work machine is still
-processing confidential data — locally, which is a better posture, but the
-question your policy asks is about the data, not the network. Worth being able to
-answer before someone asks.
+Running locally does not exempt the work from your organization's software, data-handling and endpoint policies. Processing confidential documents on a work machine is still processing confidential data. Local processing is a stronger position, but a data policy asks about the data and not about the network, so confirm what yours allows before you start.
 
-Two practical notes for a managed machine:
+Two practical notes apply to a managed machine:
 
-- Ollama runs an HTTP server on `127.0.0.1:11434`. It never listens on an external
-  interface, but some endpoint agents flag any listening process.
-- Installation needs outbound access to `pypi.org` and `ollama.com`. Nothing needs
-  network access after that. If the model pull is blocked, Ollama's store is
-  content-addressed and moves by plain file copy — `rsync ~/.ollama/models/` from
-  a machine that could pull it. Blobs are named by SHA-256, so merging two stores
-  is safe.
+- Ollama runs an HTTP server on `127.0.0.1:11434`. It does not listen on an external interface, but some endpoint agents flag any listening process.
+- Installation needs outbound access to `pypi.org` and `ollama.com`. Nothing needs network access after that. If the model pull is blocked, the model store can be copied as plain files, for example with `rsync ~/.ollama/models/` from a machine that could pull it. Ollama's store is content-addressed and its blobs are named by SHA-256, so merging two stores is safe.
 
 ## Reporting a vulnerability
 
-Open an issue for anything that is not itself sensitive. For something you would
-rather not post publicly, open an issue asking for a contact address and leave the
-details out.
+Open an issue for anything that is not sensitive. For a report you would prefer not to post publicly, open an issue that asks for a contact address and leave the details out.

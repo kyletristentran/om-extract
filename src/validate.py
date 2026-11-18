@@ -1,4 +1,4 @@
-"""validate.py — merge the passes, prove the record, route breaks to review.
+"""validate.py: merge the passes, prove the record, route breaks to review.
 
 The last gate before a record is allowed to represent a real document. It takes
 the deterministic pass (regex evidence) and the LLM pass (rent roll rows), merges
@@ -54,7 +54,7 @@ def _issue(code, detail, blocking):
 
 
 # --------------------------------------------------------------------------
-# field-level checks — every rule comes from the spec
+# field-level checks: every rule comes from the spec
 # --------------------------------------------------------------------------
 def check_document_fields(record: dict) -> list[dict]:
     """Apply spec validation.document_checks to the {value, source, found} fields."""
@@ -121,7 +121,7 @@ def check_rows(rows: list[dict], row_status: str, row_reason: str | None) -> lis
 
         # The subtotal guard. Total / summary / space-category rows have the exact
         # shape of a data row and often carry a full set of figures, so nothing
-        # structural distinguishes them — only the label does.
+        # structural distinguishes them; only the label does.
         #
         # This REJECTS the record rather than dropping the row. Silently deleting
         # the row would hide a real parsing failure, and the failure it guards
@@ -139,7 +139,7 @@ def check_rows(rows: list[dict], row_status: str, row_reason: str | None) -> lis
 
     # Duplicate rows mean the model double-emitted. Keyed on the PAIR, because one
     # tenant occupying several suites at different terms is a real and common
-    # pattern that must never be collapsed — the multiple rows ARE the lease
+    # pattern that must never be collapsed. The multiple rows are the lease
     # structure. Keying on tenant_name alone would silently merge them.
     seen = {}
     for i, row in enumerate(rows):
@@ -164,7 +164,7 @@ def check_count(record: dict, rows: list[dict]) -> list[dict]:
 
 
 # --------------------------------------------------------------------------
-# confidence — worst contributing source wins
+# confidence: worst contributing source wins
 # --------------------------------------------------------------------------
 def record_sources(record: dict, rows_source: str | None) -> list[str]:
     sources = []

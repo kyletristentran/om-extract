@@ -1,4 +1,4 @@
-"""pipeline.py — the single entry point: PDF in, validated record or review item out.
+"""pipeline.py: the single entry point: PDF in, validated record or review item out.
 
     PDF
      |- triage        -> text_layer / scanned / hybrid
@@ -9,7 +9,7 @@
 
 The branch is the whole point of the triage step. Everything downstream of it is
 shared code, so a record's `source` and `extraction_confidence` are the only things
-that reveal which way it came — which is exactly what a reviewer needs to know.
+that reveal which way it came, which is exactly what a reviewer needs to know.
 
 Deterministic extraction runs on every document regardless of branch: a scanned
 document still has a filename, so document_id, document_date and the version

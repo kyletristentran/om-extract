@@ -1,30 +1,30 @@
-"""run_eval_llm.py — score the rent roll pass against ground truth.
+"""run_eval_llm.py: score the rent roll pass against ground truth.
 
 Three headline metrics:
-  1. row recall      — ground-truth rows the pass found
-  2. field accuracy  — correct fields across ALL ground-truth rows x fields, so
+  1. row recall:      ground-truth rows the pass found
+  2. field accuracy:  correct fields across all ground-truth rows x fields, so
                        the fields of a MISSING row count as wrong. Returning one
                        perfect row and dropping the rest cannot score well.
-  3. schema validity — documents that returned validated output instead of
+  3. schema validity: documents that returned validated output instead of
                        routing to review
 
 Plus one pass/fail check that is not a percentage: **no subtotal, summary, or
 space-category row may be emitted as a tenant.** A single "TOTAL LEASED" line
 that survives into the output is a several-hundred-thousand-square-foot phantom
 lease downstream, at a blended rent that looks entirely plausible. That failure
-does not deserve to be averaged away across a corpus — so it is counted
+does not deserve to be averaged away across a corpus, so it is counted
 separately and it is fatal.
 
 Gate: >=98% on row recall AND field accuracy, zero spurious rows.
 
-Comparison is normalized symmetrically on BOTH sides — case-folded and
+Comparison is normalized symmetrically on both sides: case-folded and
 whitespace-collapsed for text, "$" and "," stripped for money and square footage.
 That is fair comparison, not a repair of model output: llm_pass.py never edits
 what the model returns, it only accepts or rejects it.
 
 Documents marked `ocr_required` in ground truth are excluded from metrics 1 and 2
 and checked separately: on the TEXT path they must route to review, never guess.
-Their rows are real and recoverable — eval/run_eval_ocr.py scores the OCR branch
+Their rows are real and recoverable; eval/run_eval_ocr.py scores the OCR branch
 against them. Keying on the flag rather than on "ground truth has no rows"
 matters, because the scanned fixture does have rows.
 
@@ -94,7 +94,7 @@ for fname, gt in sorted(GT.items()):
 
     # Rows are keyed on (tenant_name, rentable_sf), NOT tenant_name alone. One
     # tenant occupying several suites at different terms produces several rows
-    # sharing a name, and those multiple rows ARE the lease structure — collapsing
+    # sharing a name, and those multiple rows are the lease structure; collapsing
     # them loses real information. A scorer keyed on the name alone would merge
     # them and then score the survivors as missing, which is a scorer contradicting
     # the contract it is scoring.
@@ -170,7 +170,7 @@ print(f"no-table docs failed closed:  {no_table_ok}/{no_table_total}")
 # figure and takes money tokens in order; it has no idea what a TI Allowance, an
 # Escalation, or a blank in-place cell is, so on a drift-rich corpus it will
 # mis-slot fields and it will happily read a subtotal row. That is not a
-# regression — it is the double being a double. Holding it to the model's accuracy
+# regression: it is the double being a double. Holding it to the model's accuracy
 # gate would only tempt someone to grow it into a second extractor, which is
 # exactly what its docstring says not to do.
 #
@@ -180,7 +180,7 @@ print(f"no-table docs failed closed:  {no_table_ok}/{no_table_total}")
 if mock_mode:
     gate = validity >= 100.0 and no_table_ok == no_table_total
     print(f"\nSMOKE (schema valid + fail-closed): {'PASS' if gate else 'FAIL'}")
-    print("  accuracy and subtotal counts above are informational — the double")
+    print("  accuracy and subtotal counts above are informational; the double")
     print("  cannot read distractor columns and does not know what a total is.")
     print("  The subtotal guard that DOES hold in mock mode lives in validate.py;")
     print("  run `LLM_MOCK=1 python src/pipeline.py fixtures/pdfs` to see it fire.")

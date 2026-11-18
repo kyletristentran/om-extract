@@ -1,4 +1,4 @@
-"""triage.py — classify a PDF as text_layer / scanned / hybrid.
+"""triage.py: classify a PDF as text_layer / scanned / hybrid.
 
 Why this exists: the pipeline branches here. Text-layer documents go straight to
 regex + text parsing; scanned documents need an OCR pass first. Classification is

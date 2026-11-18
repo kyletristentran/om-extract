@@ -1,11 +1,8 @@
 # om-extract
 
-Extract structured rent roll data from commercial real estate Offering Memorandums.
-Runs entirely on your own machine — no API keys, no uploads, no per-page cost.
+om-extract pulls structured rent roll data out of commercial real estate offering memorandums (OMs). It runs entirely on the local machine. It needs no API key, uploads nothing and has no per-page cost.
 
-An OM is forty pages of photography and prose wrapped around a handful of numbers
-somebody actually needs. This pulls out the numbers, tells you how much to trust
-them, and refuses to guess when it cannot read something.
+An OM is typically about forty pages of photography and prose around a small set of figures that an analyst needs. om-extract returns those figures, rates how far each record can be trusted, and sends a document to a review queue when it cannot read something.
 
 ```
 Offering Memorandum - 2026-04-06 - Final.pdf   text_layer  text  ok      conf=medium  rows=4
@@ -16,16 +13,11 @@ Offering Memorandum - 2026-06-15 - Draft.pdf   text_layer  text  review  conf=no
 3 validated, 1 to review, 17 rows -> out/
 ```
 
----
+## Extracted fields
 
-## What it pulls out
+For each document: address, county, year built, floors, rentable square footage, tax parcel number, document date, revision state and listing contacts.
 
-**Per document** — address, county, year built, floors, rentable square footage,
-tax parcel number, document date and revision state, listing contacts.
-
-**Per tenant** — name, suite, rentable SF, percent of building, lease expiration,
-in-place base rent, market rent. One row per tenant-per-document, typed and
-normalized:
+For each tenant: name, suite, rentable square feet, percent of building, lease expiration, in-place base rent and market rent. The output has one typed, normalized row per tenant per document:
 
 ```json
 {
@@ -50,17 +42,11 @@ normalized:
 }
 ```
 
----
+## Design
 
-## The design idea
+Most of the pipeline is deterministic. A regular expression on `Parcel ID Number` is fully reliable, while a 14B model reads the same field correctly about 95% of the time. The language model is therefore used for one task only, which is parsing the rent roll table. That table is the one place where layout and label wording vary more than a regular expression can follow.
 
-**Most of this is deterministic, not generative.** A regex on `Parcel ID Number`
-is 100% reliable where a 14B model is about 95%. So the language model gets
-exactly one job — parse the rent roll table — because that is the only place where
-layout and label wording genuinely drift beyond what regex can follow.
-
-The model never sees the whole document. It sees a sliced region, usually six to
-twenty lines. Everything else is pattern matching.
+The model never receives the whole document. It receives a sliced region, usually 6 to 20 lines, and everything else is pattern matching.
 
 ```
 PDF
@@ -73,47 +59,24 @@ PDF
  └─ emit           typed contract JSON
 ```
 
-Four rules hold everywhere:
+The pipeline follows four rules.
 
-**Fail closed.** Anything ambiguous, unparseable, or unverifiable goes to
-`out/review_queue.json` with a named reason. Never a guess, never a partial row,
-never a silent repair of model output.
+1. **It fails closed.** Anything ambiguous, unparseable or unverifiable goes to `out/review_queue.json` with a named reason. The pipeline does not guess, emit a partial row or repair model output.
+2. **A blank field is distinct from an unreadable one.** Every extracted field carries `{value, source, found}`. A document that prints no parcel number is a different case from one whose parcel number could not be read, and a consumer of the output needs to tell the two apart.
+3. **Behavior is set in configuration.** All patterns, prompts, thresholds, field definitions and validation rules are in [`spec/om_extraction_spec.yaml`](spec/om_extraction_spec.yaml). The `llm.fields` block generates both the prompt and the JSON schema that validates the model's output, so the two stay consistent. Adding a field is a YAML edit.
+4. **The weakest source sets the confidence.** A record's confidence is capped by its weakest evidence. Rows recovered by OCR make the whole record `low`, even when the surrounding regex fields were clean.
 
-**Blank is not unreadable.** Every extracted field carries
-`{value, source, found}`. A document that prints no parcel number is a different
-situation from one whose parcel number could not be read, and a consumer needs to
-be able to tell them apart.
+## Two confidence fields
 
-**Config-driven.** All patterns, prompts, thresholds, field definitions and
-validation rules live in [`spec/om_extraction_spec.yaml`](spec/om_extraction_spec.yaml).
-The `llm.fields` block drives both the prompt and the JSON schema that validates
-the model's output, so the two cannot drift. Adding a field is a YAML edit.
+`extraction_confidence` rates the document evidence, for example whether a parcel number or a listing contact block was found. `row_confidence` rates how the rows were read: by regex, by the model over a text layer, or by OCR followed by the model.
 
-**Worst source wins.** A record's confidence is capped by its weakest evidence,
-not raised by its best. Rows recovered by OCR make the whole record `low`, however
-clean the regex fields around them were.
+The two can differ. A scanned OM with a clearly printed parcel number is `High` on evidence and `Low` on reading. A single combined score would make that document look the same as one with thin evidence, and the two need different kinds of review.
 
----
+## Subtotal rows
 
-## Two confidence numbers, on purpose
+Most of the validation layer exists because of this failure.
 
-`extraction_confidence` scores the **document evidence** — was a parcel number or
-a listing contact block actually found? `row_confidence` scores **how the rows
-were read** — regex, model over a text layer, or OCR then model.
-
-They genuinely differ. A scanned OM with a crisp printed parcel number is `High`
-on evidence and `Low` on reading. Collapsing them into one number makes that
-document indistinguishable from one where the evidence itself is thin, and those
-two call for completely different review.
-
----
-
-## The subtotal problem
-
-This is the failure mode that motivated most of the validation layer.
-
-A rent roll's total rows look exactly like tenant rows. Nothing structural
-separates them — same columns, same shapes, often a full set of figures:
+The total rows of a rent roll have the same structure as tenant rows. They share the same columns and often carry a full set of figures:
 
 ```
 Whitlock and Pryce, LLP     35,404    7.3%    Dec-21   27.30    34.00   -20%
@@ -124,20 +87,13 @@ BOMA Adjustment             4,260     0.9%
 Available                   50,340    10.4%
 ```
 
-Emit `TOTAL OFFICE LEASED` as a tenant and you have a 431,700 SF phantom lease at
-a blended rent that looks entirely plausible to anyone reading the output.
+If `TOTAL OFFICE LEASED` were emitted as a tenant, the output would contain a 431,700 SF lease that does not exist, at a blended rent that looks plausible to a reader.
 
-So it is defended twice. The prompt lists the labels to skip, and
-`validation.non_tenant_row_patterns` rejects the whole record if one gets through.
-It **rejects rather than drops the row** — silently deleting it would hide a real
-parsing failure, and this failure is too expensive to hide.
+The pipeline guards against this in two places. The prompt lists the labels to skip, and `validation.non_tenant_row_patterns` rejects the whole record if one of those rows gets through. The validator rejects the record instead of dropping the row, because dropping it would hide a parsing failure.
 
----
+## Column alignment
 
-## Column alignment is a lie
-
-The other lesson worth stealing. Three consecutive rows of one table, exactly as
-`pdfplumber` returns them:
+The following three consecutive rows come from one table, as returned by `pdfplumber`:
 
 ```
 Fairmont Ridge Bank         52,180    10.7%   Dec-26   25.40    31.00   -18%
@@ -145,40 +101,28 @@ Delacroix Media Publishing LLC 48,915 10.1%   Sep-24   21.85    31.00   -30%
 Sandoval Hospitality Services, LLC 41,260 8.5% Apr-21  23.75    31.00   -23%
 ```
 
-Same table. The rows with short tenant names stay neatly column-aligned; the rows
-with long names push their figures out of position and collapse the gaps. An
-extractor keying on horizontal position gets the first row right and the next two
-wrong. The prompt tells the model to read by column *order* relative to the
-square-footage anchor instead.
+The row with a short tenant name stays aligned to its columns. The rows with long names push their figures out of position and close the gaps. An extractor that relies on horizontal position reads the first row correctly and the next two incorrectly. For this reason the prompt tells the model to read by column order relative to the square-footage figure.
 
-Which is also why the region is read with `pdfplumber extract_text(layout=True)`
-and the sliced lines are deliberately **not** stripped. Collapsed text turns a row
-with an empty cell into
+The same problem explains why the region is read with `pdfplumber extract_text(layout=True)` and why the sliced lines are not stripped. Collapsed text turns a row with an empty cell into
 
 ```
 Acme Holdings LLC 12,400 2.5% 28.75
 ```
 
-where nothing says whether `28.75` is the in-place rent or the market rent. Layout
-mode keeps the gap, so an empty cell is visible as an empty cell. Use collapsed
-text for regex, layout text for tables.
+and nothing in that line shows whether `28.75` is the in-place rent or the market rent. Layout mode preserves the gap, so an empty cell remains visible. The pipeline uses collapsed text for regex matching and layout text for tables.
 
----
-
-## Install
+## Installation
 
 ```bash
-git clone https://github.com/<you>/om-extract.git
+git clone https://github.com/kyletristentran/om-extract.git
 cd om-extract
 ./setup.sh                  # core; scanned documents fail closed
 ./setup.sh --with-ocr       # also installs docling (~3 GB) for scanned documents
 ```
 
-`setup.sh` checks Python, builds the venv, installs pinned dependencies, verifies
-Ollama is running, pulls the model named in the spec, regenerates the fixtures and
-runs the gates. It is safe to re-run.
+`setup.sh` checks the Python version, builds the virtual environment, installs pinned dependencies, verifies that Ollama is running, pulls the model named in the spec, regenerates the fixtures and runs the evaluation gates. It can be run again safely.
 
-Manually:
+To install manually:
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -187,13 +131,9 @@ ollama pull qwen3:14b                     # 9.3 GB
 .venv/bin/python fixtures/generate_fixtures.py
 ```
 
-Requires Python 3.11+, about 10 GB of disk for the model, and outbound access to
-pypi.org and ollama.com **at install time only**. At run time nothing leaves the
-machine.
+The project requires Python 3.11 or later, about 10 GB of disk space for the model, and outbound access to pypi.org and ollama.com during installation. At run time nothing leaves the machine.
 
----
-
-## Use
+## Usage
 
 ```bash
 # extraction only -> out/validated.json, out/review_queue.json, out/pipeline_report.json
@@ -208,27 +148,21 @@ machine.
 .venv/bin/python src/llm_pass.py      /path/to/oms
 ```
 
-Start with `triage.py` on a sample of your own documents. It tells you how many
-are scanned, which is what decides whether you need the OCR install at all.
-Executed, digitally-produced OMs usually carry a text layer.
+Start with `triage.py` on a sample of your own documents. It reports how many are scanned, which determines whether the OCR install is needed. Executed OMs that were produced digitally usually carry a text layer.
 
-### Retargeting it
+### Pointing it at a different table
 
-The spec is the product. To point this at a different table — an operating
-statement, a sales comp set, a lease abstract — edit
-`spec/om_extraction_spec.yaml`:
+The spec controls what is extracted. To target a different table, such as an operating statement, a sales comp set or a lease abstract, edit `spec/om_extraction_spec.yaml`:
 
-- `llm.region.start_pattern` — the heading that opens the table
-- `llm.region.row_pattern` — a stable-shaped token every data row carries
-- `llm.fields` — the columns you want (drives prompt *and* schema)
-- `validation.row_checks` — the shapes those values must satisfy
-- `validation.non_tenant_row_patterns` — labels that are not data rows
+- `llm.region.start_pattern`: the heading that opens the table
+- `llm.region.row_pattern`: a token with a stable shape that every data row carries
+- `llm.fields`: the columns to extract (this generates both the prompt and the schema)
+- `validation.row_checks`: the shapes those values must satisfy
+- `validation.non_tenant_row_patterns`: labels that are not data rows
 
-No Python changes. That constraint is what keeps the thing maintainable.
+None of these changes requires editing Python.
 
----
-
-## Gates
+## Evaluation gates
 
 ```bash
 .venv/bin/python eval/run_eval.py                    # 116/116 deterministic checks
@@ -237,10 +171,9 @@ LLM_MOCK=1 .venv/bin/python eval/run_eval_llm.py     # smoke: harness + schema +
 .venv/bin/python eval/run_eval_ocr.py                # OCR branch, gate ≥98%
 ```
 
-`fixtures/generate_fixtures.py` builds fifteen synthetic OMs, each encoding one
-trap taken from real brokerage documents:
+`fixtures/generate_fixtures.py` builds fifteen synthetic OMs. Each one encodes a trap taken from real brokerage documents:
 
-| Trap | |
+| Trap | Expected handling |
 |---|---|
 | parcel number repeated on every page | must dedupe |
 | no parcel number at all | contact block is the only evidence |
@@ -248,7 +181,7 @@ trap taken from real brokerage documents:
 | image-only pages, ruled table | routes to the OCR branch |
 | two distinct parcel numbers | flag for review, never pick one |
 | `3.9.2026` filename | m.d.yyyy date format |
-| `Sept 2019` filename | month precision only — never padded to a day |
+| `Sept 2019` filename | month precision only, never padded to a day |
 | label drift | Occupant / Rentable SF / Expires / Annual Base Rent |
 | `$`-prefixed money | Sq. Ft. and Lease End labels |
 | Escalation + Security Deposit columns | trailing distractors |
@@ -259,59 +192,26 @@ trap taken from real brokerage documents:
 | ten tenants split across two pages | continued under a repeated heading |
 | a Prior Year Lease Schedule | must never be read |
 
-All fixture data is invented. No real document is included in this repository, and
-none should be — see [`SECURITY.md`](SECURITY.md) before running this against
-anything confidential.
+All fixture data is invented. The repository contains no real document. Read [`SECURITY.md`](SECURITY.md) before running the pipeline on anything confidential.
 
-Scoring notes worth copying if you build something similar:
+The scoring follows four conventions:
 
-- **Field accuracy denominates over all ground-truth rows × fields**, so the
-  fields of a *missing* row count as wrong. Returning one perfect row and dropping
-  the rest cannot score well.
-- **Normalization is symmetric on both sides.** Casefold and whitespace-collapse
-  for text, `$` and `,` stripped for numbers. That is fair comparison, not repair —
-  `llm_pass.py` never edits what the model returns, it only accepts or rejects it.
-- **Rows key on `(tenant_name, rentable_sf)`, not name alone.** A tenant in three
-  suites is three rows, and those rows *are* the lease structure. A scorer keyed on
-  the name would merge them and then report the survivors as missing — a scorer
-  contradicting the contract it scores.
-- **Subtotals emitted as tenants are counted, never averaged.** A count of 1 fails
-  the gate outright. Some errors do not deserve to be diluted across a corpus.
+- Field accuracy is computed over all ground-truth rows and fields, so the fields of a missing row count as wrong. A run that returns one perfect row and drops the rest scores poorly.
+- Normalization is applied to both sides of the comparison. Text is casefolded and its whitespace collapsed, and `$` and `,` are stripped from numbers. This makes the comparison fair without repairing anything: `llm_pass.py` never edits what the model returns and only accepts or rejects it.
+- Rows are keyed on `(tenant_name, rentable_sf)`. A tenant in three suites has three rows, and those rows describe the lease structure. A scorer keyed on the name alone would merge them and then report the others as missing, which would contradict the output contract.
+- Subtotals emitted as tenants are counted, not averaged. A count of 1 fails the gate.
 
----
+## Notes from development
 
-## Notes from building it
+- **`think: false` is required.** With `format: "json"`, the JSON grammar constrains the sampler while a reasoning model still tries to emit think tokens. On qwen3:14b this reproducibly appended a stray `" /"` to the last value of the last row at temperature 0. When an artifact is deterministic and tied to one position, check the inference mode before changing the prompt.
+- **Negative prompt rules made results worse.** Adding the rule "never append a trailing slash" lowered accuracy and spread the artifact to a document that had been clean. Naming a forbidden token places it in context and raises its probability. Rules that describe the layout worked, and rules that named a mistake did not.
+- **Two OCR failures were fixture bugs.** The OCR branch scored 0% and then 60% for two reasons, both in the fixture: space-padded columns that defeated table detection, and a table that ran past the page edge, whose clipped glyphs were transcribed as `4,7!`. Rasterized tables need ruling lines, because layout models rely on them.
+- **The mock is not tuned to pass.** `LLM_MOCK=1` substitutes a deterministic anchored parser, so slicing and validation can be regression-tested without a running model. The mock cannot read a distractor column and does not recognize a subtotal. Mock mode therefore gates only on schema validity and fail-closed behavior, and it prints accuracy for information. The mock is never used when a real model call fails, because that would hide the failure.
 
-**`think: false` is load-bearing.** With `format: "json"` the JSON grammar
-constrains the sampler while a reasoning model still wants to emit think tokens.
-On qwen3:14b that conflict reproducibly appended a stray `" /"` to the last value
-of the *last* row, at temperature 0. Debug the inference mode before the prompt
-when an artifact is deterministic and position-specific.
-
-**Negative prompt rules can backfire.** Adding *"never append a trailing slash"*
-made accuracy worse and spread the artifact to a document that had been clean.
-Naming a forbidden token puts it in context and raises its probability. Rules
-describing what the layout **is** work; rules naming a mistake invite it.
-
-**Check the fixture before blaming the model.** The OCR branch scored 0%, then
-60%, for two reasons that were both bugs in the *fixture*: space-padded columns
-that defeated table detection, and a table running past the page edge whose
-clipped glyphs transcribed as `4,7!`. Give rasterized tables ruling lines — layout
-models key on them.
-
-**Don't tune a test double to pass.** `LLM_MOCK=1` swaps in a deterministic
-anchored parser so slicing and validation can be regression-tested with no model
-running. It cannot read a distractor column and does not know what a subtotal is,
-so mock mode gates on what it *can* prove — schema validity and fail-closed
-behaviour — and prints accuracy as information only. It is never consulted when a
-real model call fails; that would mask the failure.
-
----
-
-## Layout
+## Repository layout
 
 ```
-spec/om_extraction_spec.yaml   all pattern knowledge — the single source of truth
+spec/om_extraction_spec.yaml   all pattern knowledge (single source of truth)
 spec/om_record_schema.json     the output contract
 src/triage.py                  text_layer / scanned / hybrid
 src/deterministic.py           the zero-LLM pass
@@ -324,22 +224,14 @@ fixtures/generate_fixtures.py  the synthetic corpus and its ground truth
 eval/                          the gates
 ```
 
-[`ARCHITECTURE.md`](ARCHITECTURE.md) has the module-by-module detail, the data
-shapes, and the decisions that look like dead weight until you remove one.
-
----
+[`ARCHITECTURE.md`](ARCHITECTURE.md) describes each module, the data shapes and the design decisions that should not be simplified.
 
 ## Limitations
 
-- The labelled-fields regexes assume a single-column property details block. Real
-  OMs often set it as two columns, which the collapsed text extractor interleaves
-  onto one line. Documented rather than papered over.
-- OCR runs on CPU at roughly 40 s/document. There is no GPU path.
-- The rent roll must sit under a heading matching `region.start_pattern`. A table
-  with no heading at all is not found, and that is a deliberate trade — the same
-  narrowness is what keeps a "Prior Year Lease Schedule" out of your results.
-- Nothing here calls a public records API, a broker platform, or any external
-  service. Everything comes out of the PDF you gave it.
+- The labeled-field regexes assume a property details block set in a single column. Real OMs often set it in two columns, which the collapsed text extractor interleaves onto one line. This case is not handled.
+- OCR runs on CPU at roughly 40 seconds per document. There is no GPU path.
+- The rent roll must sit under a heading that matches `region.start_pattern`. A table with no heading is not found. This restriction is intentional, because it also keeps a "Prior Year Lease Schedule" out of the results.
+- The pipeline calls no public records API, broker platform or other external service. All output comes from the PDF it was given.
 
 ## License
 

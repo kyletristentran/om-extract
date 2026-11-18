@@ -1,4 +1,4 @@
-"""deterministic.py — the zero-LLM extraction pass.
+"""deterministic.py: the zero-LLM extraction pass.
 
 Extracts everything reliably regex-able from an Offering Memorandum:
   - Assessor's / tax parcel number (deduped across pages; >1 distinct -> flag)
@@ -40,7 +40,7 @@ def _null_field():
 
 
 # --------------------------------------------------------------------------
-# text readers — the distinction between these two is load-bearing
+# text readers: the two are not interchangeable
 # --------------------------------------------------------------------------
 def extract_text(path: Path) -> str | None:
     """Collapsed text. Stable and cheap. Right for regex, wrong for tables."""
@@ -81,7 +81,7 @@ def parcel_id(text: str) -> dict:
 
     Dedupes parcel numbers across pages. On more than one distinct value it
     returns found=False plus a flag, because a property spanning several parcels
-    is a real and common situation — and in that situation no single value is
+    is a real and common situation, and in that situation no single value is
     "the" parcel ID. Choosing one would be inventing a fact.
 
     This is the fail-closed pattern the rest of the pipeline copies.
@@ -161,7 +161,7 @@ def document_date(filename: str) -> dict:
 def labeled_fields(text: str) -> dict:
     """Single-capture regexes over the Property Details / Site Description block.
 
-    Adding a property fact is a row in spec.deterministic.labeled_fields — there
+    Adding a property fact is a row in spec.deterministic.labeled_fields; there
     is nothing to change here.
     """
     out = {}

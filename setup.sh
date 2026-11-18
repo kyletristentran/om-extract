@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup.sh — build the environment and prove it works.
+# setup.sh: build the environment and prove it works.
 #
 #   ./setup.sh              core only; scanned documents fail closed
 #   ./setup.sh --with-ocr   also installs the OCR backend (~3 GB)
@@ -87,10 +87,10 @@ say "Fixtures"
 "$VPY" fixtures/generate_fixtures.py | tail -3
 
 # ------------------------------------------------------------------ gates ----
-say "Gate 1/2 — deterministic (proves the environment)"
+say "Gate 1/2: deterministic (proves the environment)"
 "$VPY" eval/run_eval.py | tail -2
 
-say "Gate 2/2 — mock smoke (proves the harness, no model needed)"
+say "Gate 2/2: mock smoke (proves the harness, no model needed)"
 LLM_MOCK=1 "$VPY" eval/run_eval_llm.py | tail -6
 
 say "Done"

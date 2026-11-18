@@ -1,4 +1,4 @@
-"""generate_fixtures.py — build the synthetic OM corpus and its ground truth.
+"""generate_fixtures.py: build the synthetic OM corpus and its ground truth.
 
 Fifteen small Offering Memoranda, each deliberately encoding one trap that real
 brokerage OMs contain. All data is invented: the properties, tenants, addresses,
@@ -13,8 +13,8 @@ Writes fixtures/pdfs/*.pdf and fixtures/ground_truth.json.
 TWO THINGS THAT MUST NOT CHANGE
 -------------------------------
 1. The build loop stays behind `if __name__ == "__main__"`. Anything at module
-   scope that mutates state turns a bare `import generate_fixtures` — the obvious
-   way to reuse draw_row() — into a silent rewrite of every tracked PDF.
+   scope that mutates state turns a bare `import generate_fixtures` (the obvious
+   way to reuse draw_row()) into a silent rewrite of every tracked PDF.
 2. The scanned fixture's table keeps its ruling lines and stays inside the page.
    Space-padded columns make OCR insert characters AND stop table detection
    entirely; a table running past the page edge gets its last column transcribed
@@ -38,7 +38,7 @@ SANS, SANS_B = "Helvetica", "Helvetica-Bold"
 TSIZE = 8
 
 # Default rent roll column origins, in points from the left edge.
-# The tenant column is 205pt wide — about 42 monospace characters at 8pt. Several
+# The tenant column is 205pt wide, about 42 monospace characters at 8pt. Several
 # fixture tenants are deliberately longer than that.
 XS = [45, 250, 320, 375, 440, 505, 565]
 HEADERS = ["TENANT", "RSF", "%", "LED", "BASE RENT", "RENT", "% MKT"]
@@ -99,7 +99,7 @@ def cover_page(c, f):
 
 
 def details_page(c, f, parcel_value=None):
-    """Property Details — the labelled key-value block the regex pass reads.
+    """Property Details: the labelled key-value block the regex pass reads.
 
     Kept single-column on purpose. Real OMs set this as two columns, which the
     collapsed text extractor interleaves onto one line; handling that is a
@@ -134,7 +134,7 @@ def rentroll_page(c, f, rows, headers=None, groups=None, xs=None,
     """One rent roll page.
 
     `chrome_after` maps a row index to a line of graphic-design chrome printed
-    between table rows — pull quotes and stat callouts that a designed OM
+    between table rows, such as pull quotes and stat callouts that a designed OM
     interleaves with the table. The region slicer has to survive them.
     """
     headers = headers or HEADERS
@@ -283,7 +283,7 @@ def variance(t):
     """The '% MKT' column: in-place rent against market, as a signed percent.
 
     A distractor by design. It is a percent sitting to the RIGHT of the rents,
-    while the real percent-of-building column sits to the LEFT of the term — so
+    while the real percent-of-building column sits to the LEFT of the term, so
     an extractor that grabs "the percent on this row" gets the wrong one on every
     single line, and the mistake looks entirely plausible in the output.
     """
@@ -314,7 +314,7 @@ BASE = {
 
 
 def fixtures():
-    """Return the fixture definitions. Pure data — safe to import."""
+    """Return the fixture definitions. Pure data: safe to import."""
     F = []
 
     # -- F1: parcel number repeated on every page -> must dedupe --------------

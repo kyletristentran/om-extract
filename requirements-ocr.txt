@@ -12,6 +12,6 @@
 
 docling>=2.0
 
-# Optional second backend — line-level text only, materially weaker on tables.
+# Optional second backend: line-level text only, materially weaker on tables.
 # paddleocr>=2.7
 # pdf2image>=1.17

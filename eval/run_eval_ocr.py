@@ -1,11 +1,11 @@
-"""run_eval_ocr.py — score the OCR branch against the scanned fixtures.
+"""run_eval_ocr.py: score the OCR branch against the scanned fixtures.
 
 Same three metrics as the text-path eval, restricted to documents flagged
 `ocr_required` in ground truth. Those are the documents the text path is required
 to REFUSE; this is where their rows actually have to be recovered.
 
 Same >=98% gate. An OCR branch that scores well below the text branch is not
-"good enough for scans" — it is a branch producing numbers nobody should trust,
+"good enough for scans"; it is a branch producing numbers nobody should trust,
 and the honest move is to leave those documents in the review queue.
 
 If no OCR backend is installed the harness says so and exits 0 without claiming a
@@ -44,7 +44,7 @@ def norm(field, v):
 
 
 if not TARGETS:
-    print("no fixtures flagged ocr_required — nothing to score")
+    print("no fixtures flagged ocr_required; nothing to score")
     sys.exit(0)
 
 rows_expected = rows_found = 0
@@ -101,7 +101,7 @@ for fname, gt in sorted(TARGETS.items()):
                    "PASS" if matched == len(gt_rows) else "CHECK"))
 
 if unavailable:
-    print("OCR backend not installed — the branch was not exercised.\n")
+    print("OCR backend not installed. The branch was not exercised.\n")
     for fname, reason in unavailable:
         print(f"  {fname}: {reason[:110]}")
     print("\nInstall one with:  pip install -r requirements-ocr.txt")

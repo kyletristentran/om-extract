@@ -1,4 +1,4 @@
-# om_extraction_spec.yaml — all pattern knowledge lives here, not in code.
+# om_extraction_spec.yaml: all pattern knowledge lives here, not in code.
 #
 # Core principle: adding or adjusting a field is a YAML edit, never a code edit.
 # The `llm.fields` block below drives BOTH the model prompt and the JSON schema that
@@ -8,7 +8,7 @@
 # index their own top-level key. A typo here fails before any PDF is opened.
 
 # ---------------------------------------------------------------------------
-# triage — classify a PDF as text_layer / scanned / hybrid. The pipeline branches
+# triage: classify a PDF as text_layer / scanned / hybrid. The pipeline branches
 # on this verdict, so it runs before anything expensive.
 # ---------------------------------------------------------------------------
 triage:
@@ -19,7 +19,7 @@ triage:
   scanned_doc_threshold: 0.1       # <= 10% text pages -> scanned; else hybrid
 
 # ---------------------------------------------------------------------------
-# deterministic — the zero-LLM pass. Everything reliably regex-able.
+# deterministic: the zero-LLM pass. Everything reliably regex-able.
 # A regex on a literal label is 100% reliable where a 14B model is ~95%. Use the
 # model only where layout and wording genuinely drift (that is the rent roll).
 # ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ deterministic:
   #   123-456-789       (dashed)
   #   12-34-567-890-1234 (long dashed, multi-segment)
   # Deduped across pages. A property spanning MORE THAN ONE parcel is real and
-  # common — so >1 distinct value is not an error, but it does mean no single
+  # common, so >1 distinct value is not an error, but it does mean no single
   # value can be called "the" parcel. The pass flags it and refuses to pick.
   parcel_id:
     pattern: '(?:tax\s+)?parcel\s+(?:id\s+)?(?:number|num|no\.?|#)?\s*[:\s]\s*([0-9][0-9\-\.]{5,24}[0-9])'
@@ -41,7 +41,7 @@ deterministic:
   # must not outrank a filename that says "Final".
   #
   # NOTE "Confidential" is deliberately absent. Almost every OM is captioned
-  # "Confidential Offering Memorandum" — it is a handling classification, not a
+  # "Confidential Offering Memorandum": it is a handling classification, not a
   # revision state, and treating it as a version would label the whole corpus.
   version_signals:
     - label: "Final"
@@ -56,7 +56,7 @@ deterministic:
       pattern: '\bprelim(?:inary)?\b'
 
   # Document date from the filename. Each entry declares its own capture ORDER,
-  # so parsing keys on that and never on the entry's position in this list —
+  # so parsing keys on that and never on the entry's position in this list,
   # inserting a pattern mid-list is safe. Two-digit years pivot into 20xx.
   # `month_year` yields a YYYY-MM document id (no day precision in the source;
   # inventing one would be a fabricated fact).
@@ -75,7 +75,7 @@ deterministic:
   # Labelled key-value facts from the Property Details / Site Description block.
   # Each is a plain single-capture regex; add a row here to add a field.
   #
-  # These run against the COLLAPSED text, not the layout text — pdfplumber's
+  # These run against the COLLAPSED text, not the layout text; pdfplumber's
   # default extractor squeezes runs of spaces to one, so a pattern that requires
   # two or more spaces between label and value will never fire. (Column alignment
   # is only needed for the table, which reads the layout text instead.)
@@ -93,7 +93,7 @@ deterministic:
     - name: floors
       pattern: '(?im)^\s*(?:floors|stories)\s*:?\s+(\d{1,3})\s*$'
 
-  # Broker / listing-contact names. Evidence only — this establishes that the
+  # Broker / listing-contact names. Evidence only: this establishes that the
   # document carries a real listing contact block, which is what the confidence
   # rubric scores. It is not an attempt to build a contact database.
   #
@@ -109,7 +109,7 @@ deterministic:
       - 'for[ \t]+more[ \t]+information[,  \t]+(?:please[ \t]+)?contact[:  \t]+([A-Z][a-zA-Z.\-]+(?:[ \t]+[A-Z][a-zA-Z.\-]+){1,3})'
 
 # ---------------------------------------------------------------------------
-# llm — the ONLY generative step: rent roll table -> tenants[] JSON.
+# llm: the only generative step (rent roll table -> tenants[] JSON).
 # Everything tunable lives here. Tuning = edit this block, never llm_pass.py.
 # ---------------------------------------------------------------------------
 llm:
@@ -120,7 +120,7 @@ llm:
   # Reasoning OFF. With format=json the JSON grammar constrains the sampler while a
   # thinking model still wants to emit reasoning tokens. On qwen3:14b that conflict
   # reproducibly appended a stray " /" to the last value of the LAST row, at
-  # temperature 0 — a deterministic, position-specific corruption that cost 28
+  # temperature 0: a deterministic, position-specific corruption that cost 28
   # accuracy points and looked exactly like a prompt problem.
   # Delete this key to restore the model's default. Do not delete it casually.
   think: false
@@ -131,7 +131,7 @@ llm:
 
   region:
     # Slice ONLY the rent roll block out of the page text. The model never sees
-    # the rest of the OM — smaller window, fewer places to hallucinate. A 40-page
+    # the rest of the OM. Smaller window, fewer places to hallucinate. A 40-page
     # OM is ~90% marketing prose and photography; none of it belongs in context.
     #
     # The heading in a designed OM is often letter-spaced across the page
@@ -154,12 +154,12 @@ llm:
     stop_after_non_row_lines: 3
     # A long rent roll continues on the next page under a repeated heading. Slice
     # every block under the heading and concatenate; blocks with no data row are
-    # dropped. Tables under a DIFFERENT heading are still never seen — which is
+    # dropped. Tables under a DIFFERENT heading are still never seen, which is
     # what keeps a "Historical Rent Roll" comparison table out of the results.
     multi_region: true
     # Read the region from layout-preserving text so column gaps survive. Without
     # it, a row with an empty lease-expiration cell collapses and its remaining
-    # figures become unattributable — the model has to guess which column each
+    # figures become unattributable: the model has to guess which column each
     # number belongs to.
     layout_text: true
 
@@ -250,12 +250,12 @@ llm:
       code fences — the JSON object only.
 
 # ---------------------------------------------------------------------------
-# ocr — backends are tried in this order and imported lazily, because the
+# ocr: backends are tried in this order and imported lazily, because the
 # primary one pulls a large model stack that most runs do not need.
 # ---------------------------------------------------------------------------
 ocr:
   # docling emits Markdown WITH table geometry, which the region slicer needs to
-  # find row boundaries at all. paddleocr is line-level only — a real downgrade,
+  # find row boundaries at all. paddleocr is line-level only, a real downgrade,
   # not an equal alternative.
   backends: ["docling", "paddleocr"]
   # triage verdicts that route down the OCR branch. text_layer docs are skipped
@@ -265,7 +265,7 @@ ocr:
   lang: "en"
 
 # ---------------------------------------------------------------------------
-# validation — the last gate before a record is allowed to represent a real
+# validation: the last gate before a record is allowed to represent a real
 # document. Validation REJECTS; it never rewrites a value to make it pass.
 # ---------------------------------------------------------------------------
 validation:
@@ -274,7 +274,7 @@ validation:
   # front of them, not raised by the best.
   source_rank: ["ocr", "mock", "llm", "body_regex", "filename"]
   confidence_by_source:
-    ocr: "low"          # OCR transcription + model parse — two error surfaces
+    ocr: "low"          # OCR transcription + model parse, two error surfaces
     mock: "low"         # test double, never real evidence
     llm: "medium"       # model parse that passed schema validation
     body_regex: "high"  # literal pattern match against the document text
@@ -299,7 +299,7 @@ validation:
       blocking: true
     - field: parcel_id
       pattern: '^[0-9][0-9\-\.]{5,24}[0-9]$'
-      required: false     # plenty of OMs never print a parcel number —
+      required: false     # plenty of OMs never print a parcel number,
       blocking: true      # absent is fine, malformed is not.
 
   row_checks:
@@ -334,7 +334,7 @@ validation:
       required: false
       blocking: true
 
-  # A row whose tenant_name matches any of these is not a tenant — it is a
+  # A row whose tenant_name matches any of these is not a tenant; it is a
   # subtotal, a summary line, or a space category. The prompt already tells the
   # model to skip them; this is the check that catches it when the model does not.
   #

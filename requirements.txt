@@ -1,9 +1,9 @@
-# Core dependencies — the text-layer pipeline runs on these alone.
+# Core dependencies: the text-layer pipeline runs on these alone.
 #
 #   python3 -m venv .venv
 #   .venv/bin/pip install -r requirements.txt
 #
-# OCR is NOT here on purpose — see requirements-ocr.txt. Without it, scanned
+# OCR is NOT here on purpose; see requirements-ocr.txt. Without it, scanned
 # documents fail closed with `ocr_backend_unavailable` and everything else
 # works, which is the right default on a machine where a multi-gigabyte torch
 # download is a problem.

@@ -1,11 +1,11 @@
-"""run_eval.py — score triage + deterministic extraction against ground truth.
+"""run_eval.py: score triage + deterministic extraction against ground truth.
 
 Phase-1 scope only: classification, document_id/date, parcel ID (including the
 multiple-parcel flag case), version signal, property address, RSF, and whether a
 listing contact block was found.
 
 This gate is the cheap one and it runs first. If it fails, the problem is the
-environment or the fixtures, not the model — stop and fix it before looking at
+environment or the fixtures, not the model. Stop and fix it before looking at
 anything downstream.
 
     python eval/run_eval.py
@@ -45,7 +45,7 @@ for fname, gt in sorted(GT.items()):
     check(fname, "document_version", gt["document_version"], d["document_version"]["value"])
 
     # A scanned document has no text layer, so every body-regex field on it is
-    # genuinely unreadable by this pass — including the parcel number, which is
+    # genuinely unreadable by this pass, including the parcel number, which is
     # printed on the page but only as pixels. Ground truth still carries the real
     # value because the OCR branch has to recover it; asserting it HERE would be
     # testing the OCR branch through the wrong door, and the honest expectation
